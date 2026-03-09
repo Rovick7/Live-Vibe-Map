@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Live Vibe Map – Orlando</title>
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Google Maps -->
+<script>
+  window._mapReady = false;
+  window._mapReadyCb = null;
+  function initMap() {
+    window._mapReady = true;
+    if (window._mapReadyCb) window._mapReadyCb();
+  }
+</script>
+<script
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAhADw3gj03DLGHM5ej1i8IsINM8HgRBso&libraries=visualization&callback=initMap&loading=async"
+  async defer onerror="window._mapFailed=true;if(window._mapReadyCb)window._mapReadyCb();">
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@700&display=swap');
+
+:root {
+  --red:    #FF2442;
+  --orange: #FF8C00;
+  --yellow: #FFD700;
+  --green:  #00C896;
+  --dark:   #070b14;
+  --card:   #0d1429;
+  --border: #1e293b;
+  --muted:  #64748b;
+  --text:   #f1f5f9;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; background: var(--dark); overflow: hidden; }
+body { font-family: 'Syne', sans-serif; color: var(--text); }
+
+#app { max-width: 430px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+
+/* ── Scrollable panels ── */
+.panel { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.panel::-webkit-scrollbar { width: 0; }
+
+/* ── Header ── */
+#header { padding: 48px 20px 14px; background: linear-gradient(180deg, rgba(7,11,20,1) 60%, transparent); flex-shrink: 0; position: relative; z-index: 10; }
+.header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.live-badge { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: blink 1.5s ease-in-out infinite; }
+.live-label { font-size: 10px; font-weight: 700; letter-spacing: .2em; color: var(--red); font-family: 'Space Mono', monospace; }
+.app-title { font-size: 27px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.people-count { font-size: 11px; color: var(--muted); margin-top: 3px; font-family: 'Space Mono', monospace; }
+.hot-badge { background: rgba(255,36,66,.1); border: 1px solid rgba(255,36,66,.3); border-radius: 12px; padding: 8px 13px; text-align: center; }
+.hot-num { font-size: 22px; font-weight: 800; color: var(--red); font-family: 'Space Mono', monospace; }
+.hot-lbl { font-size: 9px; color: var(--red); letter-spacing: .1em; font-family: 'Space Mono', monospace; }
+
+/* ── Tabs ── */
+#tabs { display: flex; border-bottom: 1px solid #0f172a; background: var(--dark); flex-shrink: 0; z-index: 10; }
+.tab { flex: 1; padding: 11px 0; background: none; border: none; color: var(--muted); font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .07em; cursor: pointer; text-transform: uppercase; position: relative; transition: color .2s; }
+.tab.active { color: var(--text); }
+.tab.active::after { content: ''; position: absolute; bottom: 0; left: 18%; right: 18%; height: 2px; background: var(--red); border-radius: 2px; }
+
+/* ── Filters ── */
+#filters { display: flex; gap: 8px; padding: 10px 20px; overflow-x: auto; background: var(--dark); flex-shrink: 0; }
+#filters::-webkit-scrollbar { height: 0; }
+.pill { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all .2s; }
+.pill.active { background: var(--red); border-color: var(--red); color: #fff; }
+
+/* ── Map ── */
+#map-panel { position: relative; flex: 1; }
+#gmap { width: 100%; height: 100%; }
+#map-legend { position: absolute; bottom: 14px; left: 14px; background: rgba(7,11,20,.93); border: 1px solid var(--border); border-radius: 12px; padding: 10px 13px; font-size: 10px; font-family: 'Space Mono', monospace; z-index: 5; }
+.legend-row { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; color: var(--muted); }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── List ── */
+.list-item { display: flex; align-items: center; gap: 13px; padding: 13px 20px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.04); transition: background .15s; }
+.list-item:hover, .list-item:active { background: rgba(255,36,66,.07); }
+.list-rank { font-size: 10px; color: #475569; width: 20px; flex-shrink: 0; font-family: 'Space Mono', monospace; }
+.list-icon { width: 47px; height: 47px; border-radius: 13px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.list-info { flex: 1; min-width: 0; }
+.list-name { font-weight: 700; font-size: 14px; }
+.list-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.list-bar-track { height: 4px; border-radius: 2px; background: #0f172a; margin-top: 6px; overflow: hidden; }
+.list-bar-fill { height: 100%; border-radius: 2px; transition: width .8s ease; }
+.list-score { text-align: right; flex-shrink: 0; }
+.list-score-num { font-size: 21px; font-weight: 800; font-family: 'Space Mono', monospace; }
+.list-score-lbl { font-size: 11px; font-weight: 700; margin-top: 1px; }
+
+/* ── Trending ── */
+.feed-item { background: #0f172a; border: 1px solid var(--border); border-radius: 13px; padding: 12px 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.feed-text { font-size: 13px; font-weight: 600; flex: 1; padding-right: 10px; }
+.feed-time { font-size: 10px; color: #475569; font-family: 'Space Mono', monospace; flex-shrink: 0; }
+.leader-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid #0f172a; cursor: pointer; }
+.leader-medal { font-size: 16px; width: 28px; text-align: center; }
+.leader-emoji { font-size: 22px; }
+.leader-info { flex: 1; }
+.leader-name { font-weight: 700; font-size: 14px; }
+.leader-sub { font-size: 11px; color: var(--muted); }
+.leader-score { font-size: 22px; font-weight: 800; font-family: 'Space Mono', monospace; }
+
+/* ── Venue Sheet ── */
+.sheet-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.68); z-index: 100; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 430px; background: linear-gradient(180deg, #0d1429, var(--dark)); border-top-left-radius: 24px; border-top-right-radius: 24px; border: 1px solid var(--border); max-height: 88vh; overflow-y: auto; box-shadow: 0 -30px 80px rgba(0,0,0,.95); animation: slideUp .35s cubic-bezier(.16,1,.3,1) both; }
+.sheet::-webkit-scrollbar { width: 0; }
+.drag-handle { width: 40px; height: 4px; border-radius: 2px; background: #334155; margin: 0 auto 20px; }
+.sheet-hero { padding: 20px 22px 16px; border-bottom: 1px solid var(--border); }
+.sheet-icon { width: 70px; height: 70px; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-size: 34px; flex-shrink: 0; }
+.sheet-title { font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+.sheet-vibe { font-weight: 700; font-size: 14px; margin-top: 3px; }
+.tag { font-size: 10px; font-weight: 600; padding: 3px 8px; background: var(--border); border-radius: 6px; color: #94a3b8; }
+.sub-tabs { display: flex; border-bottom: 1px solid #0f172a; }
+.sub-tab { flex: 1; padding: 11px 0; background: none; border: none; color: #475569; font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; cursor: pointer; text-transform: uppercase; letter-spacing: .06em; border-bottom: 2px solid transparent; transition: all .2s; }
+.sub-tab.active { color: var(--text); border-bottom-color: var(--red); }
+.sheet-body { padding: 18px 22px; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+.stat-box { background: #0f172a; border-radius: 12px; padding: 12px 0; text-align: center; border: 1px solid var(--border); }
+.stat-val { font-size: 19px; font-weight: 800; font-family: 'Space Mono', monospace; }
+.stat-lbl { font-size: 9px; color: #475569; letter-spacing: .12em; margin-top: 2px; }
+.info-row { display: flex; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid #0f172a; }
+.info-label { font-size: 13px; color: var(--muted); }
+.info-val { font-size: 13px; font-weight: 600; }
+.meter-track { height: 9px; border-radius: 5px; background: #0f172a; overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 5px; transition: width .8s ease; }
+.rating-bar { margin-bottom: 10px; }
+.rating-label-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
+.rating-bar-track { height: 6px; border-radius: 3px; background: #0f172a; overflow: hidden; }
+.rating-bar-fill { height: 100%; border-radius: 3px; transition: width .6s ease; }
+.vip-card { border-radius: 16px; padding: 22px 18px; text-align: center; margin-bottom: 14px; border: 1px solid rgba(255,215,0,.2); background: linear-gradient(135deg,#1a0a0f,#0f172a); }
+.btn-primary { width: 100%; padding: 14px 0; border-radius: 14px; background: linear-gradient(135deg,var(--red),#FF6B00); border: none; color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 14px; cursor: pointer; box-shadow: 0 4px 20px rgba(255,36,66,.35); transition: all .2s; }
+.btn-primary:active { transform: scale(.97); }
+.btn-secondary { padding: 14px 0; border-radius: 14px; background: var(--border); border: 1px solid #334155; color: #94a3b8; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; cursor: pointer; transition: all .2s; }
+.btn-row { display: flex; gap: 10px; padding: 0 22px 10px; }
+
+/* ── Check-in Modal ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 200; display: flex; align-items: flex-end; justify-content: center; }
+.modal { width: 100%; max-width: 430px; background: var(--card); border-top-left-radius: 24px; border-top-right-radius: 24px; padding: 24px 22px 52px; border: 1px solid var(--border); animation: slideUp .35s cubic-bezier(.16,1,.3,1) both; }
+.slider-label-row { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 13px; }
+input[type=range] { width: 100%; height: 5px; accent-color: var(--red); cursor: pointer; margin-bottom: 18px; }
+
+/* ── Toast ── */
+#toast { position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--border); border: 1px solid #334155; border-radius: 20px; padding: 10px 22px; font-size: 13px; font-weight: 700; z-index: 999; white-space: nowrap; box-shadow: 0 8px 32px rgba(0,0,0,.5); opacity: 0; transition: all .3s; pointer-events: none; }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Section title ── */
+.section-title { font-size: 10px; color: var(--muted); font-family: 'Space Mono', monospace; letter-spacing: .15em; text-transform: uppercase; margin-bottom: 13px; }
+
+/* ── Animations ── */
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+@keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
+@keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+@keyframes pulseRing { 0%{transform:scale(1);opacity:.8} 100%{transform:scale(1.7);opacity:0} }
+
+/* ── Loading ── */
+#loading { position: fixed; inset: 0; background: var(--dark); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; gap: 16px; }
+.spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--red); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Search */
+.search-input { width: 100%; padding: 11px 16px; border-radius: 12px; background: #0f172a; border: 1px solid var(--border); color: var(--text); font-family: 'Syne', sans-serif; font-size: 14px; outline: none; margin-bottom: 12px; }
+
+/* Promo badge */
+.promo-badge { font-size: 9px; background: rgba(255,215,0,.12); color: #FFD700; border: 1px solid rgba(255,215,0,.25); border-radius: 5px; padding: 2px 6px; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div style="font-size:36px">🗺</div>
+  <div class="spinner"></div>
+  <div style="color:var(--muted);font-size:13px;font-family:'Space Mono',monospace">Loading Orlando vibes...</div>
+</div>
+
+<div id="app" style="display:none">
+
+  <!-- HEADER -->
+  <div id="header">
+    <div class="header-row">
+      <div>
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          <div class="live-label">LIVE NOW</div>
+        </div>
+        <div class="app-title">Live Vibe Map</div>
+        <div class="people-count" id="people-count">Loading...</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div class="hot-badge">
+          <div class="hot-num" id="hot-count">0</div>
+          <div class="hot-lbl">HOT NOW</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div id="tabs">
+    <button class="tab active" onclick="switchTab('map')">🗺 Map</button>
+    <button class="tab" onclick="switchTab('list')">☰ Venues</button>
+    <button class="tab" onclick="switchTab('trending')">🔥 Trending</button>
+    <button class="tab" onclick="switchTab('planner')">🌙 Planner</button>
+  </div>
+
+  <!-- FILTERS -->
+  <div id="filters">
+    <button class="pill active" onclick="setFilter('All',this)">All</button>
+    <button class="pill" onclick="setFilter('bar',this)">🍸 Bars</button>
+    <button class="pill" onclick="setFilter('club',this)">🎵 Clubs</button>
+    <button class="pill" onclick="setFilter('restaurant',this)">🍜 Food</button>
+    <button class="pill" onclick="setFilter('lounge',this)">💜 Lounges</button>
+    <button class="pill" onclick="setFilter('event',this)">🎤 Events</button>
+  </div>
+
+  <!-- MAP PANEL -->
+  <div id="map-panel" class="panel" style="display:flex;flex-direction:column">
+    <div id="gmap" style="flex:1"></div>
+    <div id="map-legend">
+      <div class="legend-row"><div class="legend-dot" style="background:#FF2442"></div>🔥 Packed (81-100)</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#FF8C00"></div>⚡ Busy (61-80)</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#FFD700"></div>🙂 Moderate (41-60)</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#00C896"></div>😌 Chill (21-40)</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#3B4A6B"></div>💤 Dead (0-20)</div>
+    </div>
+  </div>
+
+  <!-- LIST PANEL -->
+  <div id="list-panel" class="panel" style="display:none;padding-bottom:24px">
+    <div style="padding:12px 20px 4px">
+      <input class="search-input" id="search-input" placeholder="Search Orlando venues..." oninput="renderList()"/>
+    </div>
+    <div id="list-container"></div>
+  </div>
+
+  <!-- TRENDING PANEL -->
+  <div id="trending-panel" class="panel" style="display:none;padding:0 20px 24px">
+    <div style="margin-top:14px" class="section-title">Live Activity Feed</div>
+    <div id="feed-container"></div>
+    <div class="section-title" style="margin-top:22px">🔥 Tonight's Leaderboard</div>
+    <div id="leaderboard-container"></div>
+    <div style="margin-top:22px;background:linear-gradient(135deg,#0d1429,#0a0f1e);border:1px solid var(--border);border-radius:16px;padding:18px">
+      <div style="font-size:15px;font-weight:800;margin-bottom:4px">💎 Hidden Gems Tonight</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Underrated Orlando spots worth checking out</div>
+      <div id="gems-container"></div>
+    </div>
+  </div>
+
+  <!-- PLANNER PANEL (shown as modal) -->
+
+</div>
+
+<!-- VENUE SHEET -->
+<div id="venue-sheet" class="sheet-overlay" style="display:none" onclick="closeSheetOnOverlay(event)">
+  <div class="sheet">
+    <div style="padding:20px 22px 0"><div class="drag-handle"></div></div>
+    <div id="sheet-content"></div>
+  </div>
+</div>
+
+<!-- CHECKIN MODAL -->
+<div id="checkin-modal" class="modal-overlay" style="display:none" onclick="closeModalOnOverlay(event,'checkin-modal')">
+  <div class="modal">
+    <div class="drag-handle"></div>
+    <div id="checkin-content"></div>
+  </div>
+</div>
+
+<!-- PLANNER MODAL -->
+<div id="planner-modal" class="modal-overlay" style="display:none" onclick="closeModalOnOverlay(event,'planner-modal')">
+  <div class="modal" style="padding-bottom:52px">
+    <div class="drag-handle"></div>
+    <div id="planner-content"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://cgujpjfxsucbrtakurcw.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_jIjAsjQbTb4UaiPFwzuEvA_ac5QfDws';
+
+// Safe Supabase init — works with all CDN versions
+let sb = null;
+try {
+  const client = window.supabase || window.supabaseJs;
+  if (client && client.createClient) {
+    sb = client.createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+} catch(e) { console.warn('Supabase init failed, using fallback data', e); }
+
+// ── FALLBACK VENUES (always shown while loading or if DB unreachable) ─────────
+const FALLBACK_VENUES = [
+  { id:1,  name:'Tier Nightclub',       type:'club',       lat:28.5383, lng:-81.3792, heat:88, checkin_count:210, vibe_label:'Packed',     music:'EDM / House',      age_group:'21-30', dress_code:'Smart Casual', wait_time:20, tags:['dancing','EDM','VIP'],          rating:4.6, promoted:true,  music_rating:5,crowd_rating:5,energy_rating:5,safety_rating:4 },
+  { id:2,  name:'The Beacham',          type:'club',       lat:28.5421, lng:-81.3789, heat:82, checkin_count:178, vibe_label:'Buzzing',     music:'Hip-Hop / Top 40', age_group:'21-30', dress_code:'Casual',       wait_time:15, tags:['live music','dancing'],         rating:4.4, promoted:true,  music_rating:4,crowd_rating:4,energy_rating:5,safety_rating:5 },
+  { id:3,  name:"Mango's Orlando",      type:'club',       lat:28.4312, lng:-81.4709, heat:91, checkin_count:312, vibe_label:'On Fire',     music:'Latin / Pop',      age_group:'21-40', dress_code:'Smart Casual', wait_time:25, tags:['latin','dancing','shows'],      rating:4.7, promoted:true,  music_rating:5,crowd_rating:5,energy_rating:5,safety_rating:4 },
+  { id:4,  name:"Hanson's Shoe Repair", type:'bar',        lat:28.5401, lng:-81.3786, heat:76, checkin_count:134, vibe_label:'Busy',        music:'Jazz / Soul',      age_group:'25-45', dress_code:'Smart',        wait_time:5,  tags:['speakeasy','cocktails'],       rating:4.9, promoted:false, music_rating:5,crowd_rating:4,energy_rating:4,safety_rating:5 },
+  { id:5,  name:'The Hammered Lamb',    type:'bar',        lat:28.5558, lng:-81.3607, heat:68, checkin_count:98,  vibe_label:'Good Energy', music:'Rock / Indie',     age_group:'21-35', dress_code:'Casual',       wait_time:0,  tags:['craft beer','chill'],          rating:4.3, promoted:false, music_rating:4,crowd_rating:3,energy_rating:4,safety_rating:5 },
+  { id:6,  name:'Reyes Mezcaleria',     type:'bar',        lat:28.5573, lng:-81.3789, heat:79, checkin_count:156, vibe_label:'Heating Up',  music:'Latin / Chill',    age_group:'25-40', dress_code:'Casual',       wait_time:5,  tags:['mezcal','latin','trendy'],     rating:4.6, promoted:true,  music_rating:4,crowd_rating:4,energy_rating:4,safety_rating:5 },
+  { id:7,  name:"Maxine's on Shine",    type:'lounge',     lat:28.5512, lng:-81.3598, heat:55, checkin_count:67,  vibe_label:'Moderate',    music:'Jazz / Blues',     age_group:'28-50', dress_code:'Smart Casual', wait_time:0,  tags:['jazz','intimate','local'],     rating:4.5, promoted:false, music_rating:5,crowd_rating:3,energy_rating:3,safety_rating:5 },
+  { id:8,  name:'Capa Steakhouse',      type:'restaurant', lat:28.3598, lng:-81.5634, heat:65, checkin_count:89,  vibe_label:'Busy',        music:'Ambient',          age_group:'All',   dress_code:'Smart Casual', wait_time:30, tags:['upscale','steak','views'],     rating:4.8, promoted:false, music_rating:3,crowd_rating:4,energy_rating:3,safety_rating:5 },
+  { id:9,  name:'The Rusty Spoon',      type:'restaurant', lat:28.5389, lng:-81.3812, heat:61, checkin_count:94,  vibe_label:'Lively',      music:'Background',       age_group:'All',   dress_code:'Casual',       wait_time:20, tags:['farm to table','local'],       rating:4.5, promoted:false, music_rating:3,crowd_rating:3,energy_rating:3,safety_rating:5 },
+  { id:10, name:'Independent Bar',      type:'bar',        lat:28.5412, lng:-81.3791, heat:84, checkin_count:189, vibe_label:'Popping',     music:'Alternative',      age_group:'21-35', dress_code:'Casual',       wait_time:10, tags:['indie','alternative'],         rating:4.3, promoted:false, music_rating:4,crowd_rating:4,energy_rating:5,safety_rating:4 },
+  { id:11, name:'Atelier',             type:'club',        lat:28.5414, lng:-81.3790, heat:93, checkin_count:287, vibe_label:'Packed',      music:'EDM / Techno',     age_group:'21-30', dress_code:'Smart Casual', wait_time:30, tags:['EDM','VIP','bottle service'], rating:4.5, promoted:true,  music_rating:5,crowd_rating:5,energy_rating:5,safety_rating:4 },
+  { id:12, name:"Wally's Mills Ave",   type:'bar',         lat:28.5601, lng:-81.3609, heat:47, checkin_count:52,  vibe_label:'Chill',       music:'Classic Rock',     age_group:'25-55', dress_code:'Casual',       wait_time:0,  tags:['dive bar','pool'],             rating:4.1, promoted:false, music_rating:3,crowd_rating:2,energy_rating:2,safety_rating:5 },
+  { id:13, name:'Ace Cafe Orlando',    type:'bar',         lat:28.5467, lng:-81.3856, heat:72, checkin_count:115, vibe_label:'Lively',      music:'Rock / Classic',   age_group:'21-50', dress_code:'Casual',       wait_time:10, tags:['bikes','rock','burgers'],      rating:4.4, promoted:false, music_rating:4,crowd_rating:3,energy_rating:4,safety_rating:5 },
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let venues       = FALLBACK_VENUES; // start with fallback, replace with DB data
+let gmap         = null;
+let markers      = {};
+let heatLayer    = null;
+let activeFilter = 'All';
+let activeTab    = 'map';
+let checkedInId  = null;
+let selectedId   = null;
+let activeSubTab = 'info';
+
+const EMOJIS = { club:'🎵', bar:'🍸', restaurant:'🍜', lounge:'💜', event:'🎤', cafe:'☕' };
+const FEED = [
+  { text:'🔥 Atelier just hit 93 vibe score!',           time:'2m ago'  },
+  { text:"⚡ Mango's Orlando — line forming fast",       time:'5m ago'  },
+  { text:'🎤 The Beacham: doors just opened!',            time:'8m ago'  },
+  { text:"💎 VIP at Reyes Mezcaleria — 2 tables left",   time:'12m ago' },
+  { text:"🍸 Hanson's Shoe Repair: jazz starts at 9PM",  time:'18m ago' },
+];
+
+// ── HEAT HELPERS ──────────────────────────────────────────────────────────────
+function heatColor(h) {
+  if (h >= 81) return { bg:'#FF2442', glow:'rgba(255,36,66,0.7)',  label:'Packed',   emoji:'🔥' };
+  if (h >= 61) return { bg:'#FF8C00', glow:'rgba(255,140,0,0.6)',  label:'Busy',     emoji:'⚡' };
+  if (h >= 41) return { bg:'#FFD700', glow:'rgba(255,215,0,0.5)',  label:'Moderate', emoji:'🙂' };
+  if (h >= 21) return { bg:'#00C896', glow:'rgba(0,200,150,0.4)',  label:'Chill',    emoji:'😌' };
+  return             { bg:'#3B4A6B', glow:'rgba(59,74,107,0.3)',   label:'Dead',     emoji:'💤' };
+}
+
+function pinSVG(v) {
+  const c = heatColor(v.heat);
+  const sz = Math.max(30, Math.min(50, 22 + v.heat * 0.27));
+  const ring = v.heat > 65
+    ? `<circle cx="${(sz+18)/2}" cy="${(sz+18)/2}" r="${sz/2+7}" fill="${c.bg}20" stroke="${c.bg}55" stroke-width="1.5"/>`
+    : '';
+  const star = v.promoted
+    ? `<circle cx="${sz+14}" cy="4" r="7" fill="#FFD700"/><text x="${sz+14}" y="8" text-anchor="middle" font-size="9" fill="#000">★</text>`
+    : '';
+  const em = EMOJIS[v.type] || '📍';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${sz+18}" height="${sz+18}">
+    <defs>
+      <filter id="f${v.id}"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <radialGradient id="g${v.id}" cx="38%" cy="33%">
+        <stop offset="0%" stop-color="${c.bg}"/>
+        <stop offset="100%" stop-color="${c.bg}88"/>
+      </radialGradient>
+    </defs>
+    ${ring}
+    <circle cx="${(sz+18)/2}" cy="${(sz+18)/2}" r="${sz/2}" fill="url(#g${v.id})" stroke="${selectedId===v.id?'#fff':c.bg}" stroke-width="${selectedId===v.id?2.5:1.5}" filter="url(#f${v.id})"/>
+    <text x="${(sz+18)/2}" y="${(sz+18)/2+6}" text-anchor="middle" font-size="${Math.round(sz*0.43)}">${em}</text>
+    ${star}
+  </svg>`;
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+async function init() {
+  await loadVenues();
+  initMap();
+  subscribeRealtime();
+  setInterval(refreshVenues, 15000); // re-fetch every 15s
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+}
+
+async function loadVenues() {
+  if (!sb) {
+    console.warn('No Supabase — using built-in Orlando venues');
+    venues = FALLBACK_VENUES;
+    updateHeaderStats();
+    return;
+  }
+  try {
+    const { data, error } = await sb.from('venues').select('*').order('heat', { ascending: false });
+    if (data && data.length > 0) {
+      venues = data;
+    } else {
+      console.warn('No data from Supabase, using fallback. Error:', error);
+      venues = FALLBACK_VENUES;
+    }
+  } catch(e) {
+    console.warn('Supabase fetch failed, using fallback:', e);
+    venues = FALLBACK_VENUES;
+  }
+  updateHeaderStats();
+}
+
+async function refreshVenues() {
+  if (!sb) return;
+  try {
+    const { data } = await sb.from('venues').select('*').order('heat', { ascending: false });
+    if (data && data.length > 0) {
+      venues = data;
+      updateHeaderStats();
+      updateMarkers();
+      if (activeTab === 'list') renderList();
+      if (activeTab === 'trending') renderTrending();
+    }
+  } catch(e) { console.warn('Refresh failed:', e); }
+}
+
+function updateHeaderStats() {
+  const total = venues.reduce((s, v) => s + (v.checkin_count || 0), 0);
+  document.getElementById('people-count').textContent = total.toLocaleString() + ' people tracked tonight';
+  document.getElementById('hot-count').textContent = venues.filter(v => v.heat > 70).length;
+}
+
+// ── REALTIME ──────────────────────────────────────────────────────────────────
+function subscribeRealtime() {
+  if (!sb) return;
+  try {
+    sb.channel('venues-live')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'venues' }, payload => {
+        const idx = venues.findIndex(v => v.id === payload.new.id);
+        if (idx >= 0) venues[idx] = payload.new;
+        else venues.push(payload.new);
+        updateMarkers();
+        updateHeaderStats();
+        if (activeTab === 'list') renderList();
+        if (activeTab === 'trending') renderTrending();
+      })
+      .subscribe();
+  } catch(e) { console.warn('Realtime subscribe failed:', e); }
+}
+
+// ── GOOGLE MAP ────────────────────────────────────────────────────────────────
+function initMap() {
+  const initFn = () => {
+    gmap = new google.maps.Map(document.getElementById('gmap'), {
+      center: { lat: 28.5383, lng: -81.3792 },
+      zoom: 13,
+      disableDefaultUI: true,
+      styles: [
+        { elementType:'geometry', stylers:[{ color:'#070b14' }] },
+        { elementType:'labels.text.fill', stylers:[{ color:'#475569' }] },
+        { elementType:'labels.text.stroke', stylers:[{ color:'#070b14' }] },
+        { featureType:'road', elementType:'geometry', stylers:[{ color:'#0f172a' }] },
+        { featureType:'road', elementType:'geometry.stroke', stylers:[{ color:'#1e293b' }] },
+        { featureType:'road.highway', elementType:'geometry', stylers:[{ color:'#1e293b' }] },
+        { featureType:'water', elementType:'geometry', stylers:[{ color:'#04070e' }] },
+        { featureType:'poi', elementType:'geometry', stylers:[{ color:'#0a0f1e' }] },
+        { featureType:'landscape', elementType:'geometry', stylers:[{ color:'#080c18' }] },
+      ],
+    });
+    updateMarkers();
+  };
+  if (window._mapReady) initFn();
+  else window._mapReadyCb = initFn;
+}
+
+function filteredVenues() {
+  return activeFilter === 'All' ? venues : venues.filter(v => v.type === activeFilter);
+}
+
+function updateMarkers() {
+  if (!gmap) return;
+  // clear old markers
+  Object.values(markers).forEach(m => m.setMap(null));
+  markers = {};
+
+  const shown = filteredVenues();
+
+  shown.forEach(v => {
+    const c = heatColor(v.heat);
+    const sz = Math.max(30, Math.min(50, 22 + v.heat * 0.27));
+    const svg = pinSVG(v);
+    const marker = new google.maps.Marker({
+      position: { lat: v.lat, lng: v.lng },
+      map: gmap,
+      icon: {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        anchor: new google.maps.Point((sz+18)/2, (sz+18)/2),
+      },
+      title: v.name,
+      zIndex: v.heat,
+    });
+    marker.addListener('click', () => openSheet(v.id));
+    markers[v.id] = marker;
+  });
+
+  // Heatmap overlay
+  if (google.maps.visualization) {
+    if (heatLayer) heatLayer.setMap(null);
+    heatLayer = new google.maps.visualization.HeatmapLayer({
+      data: shown.filter(v => v.heat > 40).map(v => ({
+        location: new google.maps.LatLng(v.lat, v.lng),
+        weight: v.heat / 100,
+      })),
+      map: gmap,
+      radius: 60, opacity: 0.35,
+      gradient: ['transparent','rgba(0,200,150,0.3)','rgba(255,215,0,0.5)','rgba(255,140,0,0.65)','rgba(255,36,66,0.85)'],
+    });
+  }
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+
+  document.getElementById('map-panel').style.display    = 'none';
+  document.getElementById('list-panel').style.display   = 'none';
+  document.getElementById('trending-panel').style.display = 'none';
+
+  if (tab === 'map')      { document.getElementById('map-panel').style.display = 'flex'; }
+  if (tab === 'list')     { document.getElementById('list-panel').style.display = 'block'; renderList(); }
+  if (tab === 'trending') { document.getElementById('trending-panel').style.display = 'block'; renderTrending(); }
+  if (tab === 'planner')  { openPlanner(); }
+}
+
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  if (activeTab === 'map') updateMarkers();
+  if (activeTab === 'list') renderList();
+}
+
+// ── LIST ──────────────────────────────────────────────────────────────────────
+function renderList() {
+  const q = (document.getElementById('search-input')?.value || '').toLowerCase();
+  const shown = filteredVenues().filter(v => !q || v.name.toLowerCase().includes(q));
+  const sorted = [...shown].sort((a,b) => b.heat - a.heat);
+  const container = document.getElementById('list-container');
+  container.innerHTML = sorted.map((v, i) => {
+    const c = heatColor(v.heat);
+    return `<div class="list-item" onclick="openSheet(${v.id})">
+      <div class="list-rank">${i+1}</div>
+      <div class="list-icon" style="background:radial-gradient(circle,${c.bg}cc,${c.bg}44);border:1px solid ${c.bg}44;box-shadow:0 0 12px ${c.glow}">
+        ${EMOJIS[v.type]||'📍'}
+      </div>
+      <div class="list-info">
+        <div class="list-name">
+          ${v.name}
+          ${v.promoted ? '<span class="promo-badge">★</span>' : ''}
+          ${checkedInId === v.id ? '<span class="promo-badge" style="background:rgba(74,222,128,.12);color:#4ade80;border-color:rgba(74,222,128,.25)">Here</span>' : ''}
+        </div>
+        <div class="list-sub">${v.checkin_count||0} people · ⭐${v.rating} · ${v.music||'—'}</div>
+        <div class="list-bar-track">
+          <div class="list-bar-fill" style="width:${v.heat}%;background:linear-gradient(90deg,${c.bg}66,${c.bg})"></div>
+        </div>
+      </div>
+      <div class="list-score">
+        <div class="list-score-num" style="color:${c.bg}">${v.heat}</div>
+        <div class="list-score-lbl" style="color:${c.bg}">${c.label}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── TRENDING ──────────────────────────────────────────────────────────────────
+function renderTrending() {
+  document.getElementById('feed-container').innerHTML = FEED.map(f =>
+    `<div class="feed-item"><div class="feed-text">${f.text}</div><div class="feed-time">${f.time}</div></div>`
+  ).join('');
+
+  const sorted = [...venues].sort((a,b) => b.heat - a.heat).slice(0,6);
+  const medals = ['🥇','🥈','🥉'];
+  document.getElementById('leaderboard-container').innerHTML = sorted.map((v,i) => {
+    const c = heatColor(v.heat);
+    return `<div class="leader-row" onclick="openSheet(${v.id})">
+      <div class="leader-medal" style="color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'#475569'}">${medals[i]||i+1+'.'}</div>
+      <div class="leader-emoji">${EMOJIS[v.type]||'📍'}</div>
+      <div class="leader-info">
+        <div class="leader-name">${v.name}</div>
+        <div class="leader-sub">${c.emoji} ${v.vibe_label} · ${v.checkin_count||0} people</div>
+      </div>
+      <div class="leader-score" style="color:${c.bg}">${v.heat}</div>
+    </div>`;
+  }).join('');
+
+  const gems = [...venues].filter(v => v.heat >= 40 && v.heat < 65).sort((a,b) => b.rating - a.rating).slice(0,3);
+  document.getElementById('gems-container').innerHTML = gems.map(v => {
+    const c = heatColor(v.heat);
+    return `<div style="display:flex;align-items:center;gap:12px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #0f172a;cursor:pointer" onclick="openSheet(${v.id})">
+      <div style="font-size:26px">${EMOJIS[v.type]||'📍'}</div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14px">${v.name}</div>
+        <div style="color:#FFD700;font-size:12px">${'★'.repeat(Math.round(v.rating))}<span style="color:var(--muted);margin-left:4px">${v.rating}</span></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:14px;font-weight:700;color:${c.bg}">${v.heat}</div>
+        <div style="font-size:10px;color:var(--muted)">${c.label}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── VENUE SHEET ───────────────────────────────────────────────────────────────
+function openSheet(id) {
+  selectedId = id;
+  const v = venues.find(x => x.id === id);
+  if (!v) return;
+  activeSubTab = 'info';
+  renderSheet(v);
+  document.getElementById('venue-sheet').style.display = 'flex';
+  if (gmap) gmap.panTo({ lat: v.lat, lng: v.lng });
+  updateMarkers(); // re-render selected pin with white border
+}
+
+function renderSheet(v) {
+  const c = heatColor(v.heat);
+  const isChecked = checkedInId === v.id;
+  document.getElementById('sheet-content').innerHTML = `
+    <div class="sheet-hero" style="background:linear-gradient(135deg,${c.bg}18,${c.bg}05)">
+      <div style="display:flex;gap:16px;align-items:flex-start">
+        <div class="sheet-icon" style="background:radial-gradient(circle,${c.bg}cc,${c.bg}44);border:2px solid ${c.bg}55;box-shadow:0 0 28px ${c.glow}">
+          ${EMOJIS[v.type]||'📍'}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px">
+            <span class="sheet-title">${v.name}</span>
+            ${v.promoted?'<span class="promo-badge">★ PROMO</span>':''}
+          </div>
+          <div class="sheet-vibe" style="color:${c.bg}">${c.emoji} ${v.vibe_label}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+            ${(v.tags||[]).map(t=>`<span class="tag">#${t}</span>`).join('')}
+          </div>
+        </div>
+        <button onclick="closeSheet()" style="background:var(--border);border:none;border-radius:50%;width:32px;height:32px;color:var(--muted);cursor:pointer;font-size:15px;flex-shrink:0">✕</button>
+      </div>
+    </div>
+    <div class="sub-tabs">
+      <button class="sub-tab ${activeSubTab==='info'?'active':''}" onclick="switchSubTab('info',${v.id})">Info</button>
+      <button class="sub-tab ${activeSubTab==='ratings'?'active':''}" onclick="switchSubTab('ratings',${v.id})">Ratings</button>
+      <button class="sub-tab ${activeSubTab==='vip'?'active':''}" onclick="switchSubTab('vip',${v.id})">VIP</button>
+    </div>
+    <div class="sheet-body">
+      ${activeSubTab==='info'?renderInfo(v,c):''}
+      ${activeSubTab==='ratings'?renderRatings(v,c):''}
+      ${activeSubTab==='vip'?renderVIP():''}
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" style="flex:2;${isChecked?'background:#4ade80;color:#000;box-shadow:none':''}" onclick="openCheckin(${v.id})">
+        ${isChecked?'✓ You\'re Here!':'📍 Check In'}
+      </button>
+      <button class="btn-secondary" style="flex:1" onclick="shareVibe('${v.name}',${v.heat})">📤 Share</button>
+    </div>
+  `;
+}
+
+function renderInfo(v,c) {
+  const waitColor = v.wait_time > 15 ? 'var(--red)' : v.wait_time > 0 ? 'var(--yellow)' : 'var(--green)';
+  return `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-val" style="color:${c.bg}">${v.heat}</div><div class="stat-lbl">VIBE</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:#94a3b8">${v.checkin_count||0}</div><div class="stat-lbl">PEOPLE</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:${waitColor}">${v.wait_time>0?v.wait_time+'m':'None'}</div><div class="stat-lbl">WAIT</div></div>
+    </div>
+    <div class="info-row"><span class="info-label">🎵 Music</span><span class="info-val">${v.music||'—'}</span></div>
+    <div class="info-row"><span class="info-label">👥 Age Group</span><span class="info-val">${v.age_group||'All'}</span></div>
+    <div class="info-row"><span class="info-label">👔 Dress Code</span><span class="info-val">${v.dress_code||'Casual'}</span></div>
+    <div class="info-row"><span class="info-label">⭐ Rating</span><span class="info-val">${v.rating} / 5.0</span></div>
+    <div style="margin-top:18px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:7px">
+        <span style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:.1em">VIBE METER</span>
+        <span style="font-size:11px;color:${c.bg};font-weight:700">${c.label}</span>
+      </div>
+      <div class="meter-track">
+        <div class="meter-fill" style="width:${v.heat}%;background:linear-gradient(90deg,${c.bg}55,${c.bg});box-shadow:0 0 10px ${c.glow}"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderRatings(v,c) {
+  const bars = [['🔊 Music',v.music_rating],['👥 Crowd',v.crowd_rating],['⚡ Energy',v.energy_rating],['🛡️ Safety',v.safety_rating]];
+  const stars = '★'.repeat(Math.round(v.rating)) + '☆'.repeat(5-Math.round(v.rating));
+  return `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Live crowd ratings from check-ins tonight</div>
+    ${bars.map(([l,val])=>`
+      <div class="rating-bar">
+        <div class="rating-label-row"><span style="color:var(--muted)">${l}</span><span style="font-weight:700">${(val||3).toFixed(1)}/5</span></div>
+        <div class="rating-bar-track"><div class="rating-bar-fill" style="width:${((val||3)/5*100)}%;background:linear-gradient(90deg,${c.bg}66,${c.bg})"></div></div>
+      </div>`).join('')}
+    <div style="background:#0f172a;border-radius:14px;padding:16px;border:1px solid var(--border);text-align:center;margin-top:10px">
+      <div style="font-size:36px;font-weight:800;color:${c.bg};font-family:'Space Mono',monospace">${v.rating}</div>
+      <div style="color:#FFD700;font-size:18px;margin-top:2px">${stars}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Based on ${v.checkin_count||0} check-ins</div>
+    </div>
+  `;
+}
+
+function renderVIP() {
+  return `
+    <div class="vip-card">
+      <div style="font-size:30px;margin-bottom:8px">👑</div>
+      <div style="font-weight:800;font-size:18px;color:#FFD700;margin-bottom:6px">VIP Experience</div>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.7;margin-bottom:18px">Skip the line · Reserved table<br>Bottle service · Priority entry</div>
+      <button class="btn-primary" style="background:linear-gradient(135deg,#FFD700,#FF8C00);color:#000;box-shadow:0 4px 20px rgba(255,215,0,.3)">
+        Book VIP Table — from $200
+      </button>
+    </div>
+    <div style="background:#0f172a;border-radius:14px;padding:16px;border:1px solid var(--border)">
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">🎟 Event Tickets</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Secure your spot tonight</div>
+      <button class="btn-primary">Buy Tickets</button>
+    </div>
+  `;
+}
+
+function switchSubTab(tab, id) {
+  activeSubTab = tab;
+  const v = venues.find(x => x.id === id);
+  if (v) renderSheet(v);
+}
+
+function closeSheet() {
+  document.getElementById('venue-sheet').style.display = 'none';
+  selectedId = null;
+  updateMarkers();
+}
+
+function closeSheetOnOverlay(e) {
+  if (e.target === e.currentTarget) closeSheet();
+}
+
+// ── CHECK-IN ──────────────────────────────────────────────────────────────────
+function openCheckin(id) {
+  const v = venues.find(x => x.id === id);
+  document.getElementById('checkin-modal').style.display = 'flex';
+  document.getElementById('checkin-content').innerHTML = `
+    <div style="font-size:19px;font-weight:800;margin-bottom:4px">📍 Check In to ${v.name}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:24px">Rate the vibe — updates everyone's map live</div>
+    ${[['👥 How Busy?','busy'],['⚡ Energy Level','energy'],['🔊 Music Quality','music']].map(([l,n])=>`
+      <div class="slider-label-row"><span style="color:#94a3b8">${l}</span><span id="${n}-val" style="font-weight:700;font-family:monospace">3/5</span></div>
+      <input type="range" min="1" max="5" value="3" id="${n}-slider" oninput="document.getElementById('${n}-val').textContent=this.value+'/5'"/>
+    `).join('')}
+    <button class="btn-primary" onclick="submitCheckin(${id})">Submit Check-In</button>
+  `;
+}
+
+async function submitCheckin(id) {
+  const busy   = +document.getElementById('busy-slider').value;
+  const energy = +document.getElementById('energy-slider').value;
+  const music  = +document.getElementById('music-slider').value;
+
+  // Update local state immediately so UI responds fast
+  const v = venues.find(x => x.id === id);
+  if (v) {
+    v.heat          = Math.min(99, v.heat + 3);
+    v.checkin_count = (v.checkin_count || 0) + 1;
+    v.energy_rating = +(v.energy_rating * 0.75 + energy * 0.25).toFixed(1);
+    v.music_rating  = +(v.music_rating  * 0.75 + music  * 0.25).toFixed(1);
+    v.crowd_rating  = +(v.crowd_rating  * 0.75 + busy   * 0.25).toFixed(1);
+    v.vibe_label    = v.heat >= 81 ? 'Packed' : v.heat >= 61 ? 'Busy' : v.heat >= 41 ? 'Moderate' : v.heat >= 21 ? 'Chill' : 'Dead';
+  }
+
+  // Save to Supabase if available
+  if (sb) {
+    try {
+      await sb.from('checkins').insert({ venue_id: id, busy_rating: busy, energy_rating: energy, music_rating: music });
+      if (v) {
+        await sb.from('venues').update({
+          heat: v.heat, checkin_count: v.checkin_count,
+          energy_rating: v.energy_rating, music_rating: v.music_rating,
+          crowd_rating: v.crowd_rating, vibe_label: v.vibe_label,
+        }).eq('id', id);
+      }
+    } catch(e) { console.warn('Checkin save failed:', e); }
+  }
+
+  checkedInId = id;
+  document.getElementById('checkin-content').innerHTML = `
+    <div style="text-align:center;padding:24px 0">
+      <div style="font-size:52px">✅</div>
+      <div style="font-size:20px;font-weight:800;margin-top:14px">Checked In!</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:6px">Vibe score updated in real-time</div>
+    </div>
+  `;
+  setTimeout(() => {
+    document.getElementById('checkin-modal').style.display = 'none';
+    showToast('🔥 Check-in live! Map updated.');
+    if (selectedId === id) { const v2 = venues.find(x=>x.id===id); if(v2) renderSheet(v2); }
+  }, 1500);
+}
+
+function closeModalOnOverlay(e, id) {
+  if (e.target === e.currentTarget) document.getElementById(id).style.display = 'none';
+}
+
+// ── NIGHT PLANNER ─────────────────────────────────────────────────────────────
+function openPlanner() {
+  const topType = (t) => [...venues].filter(v=>v.type===t).sort((a,b)=>b.heat-a.heat)[0];
+  const stops = [
+    { time:'7:00 PM',  label:'Dinner',       icon:'🍽', v: topType('restaurant') },
+    { time:'9:30 PM',  label:'Cocktail Bar', icon:'🍸', v: topType('bar') },
+    { time:'11:30 PM', label:'Club',         icon:'🎵', v: topType('club') },
+  ];
+  const stopsHTML = stops.map((s,i) => {
+    const c = s.v ? heatColor(s.v.heat) : null;
+    return `
+      <div style="display:flex;gap:14px;margin-bottom:18px;align-items:flex-start">
+        <div style="display:flex;flex-direction:column;align-items:center;padding-top:4px">
+          <div style="width:13px;height:13px;border-radius:50%;background:${c?.bg||'#334155'};box-shadow:${c?`0 0 8px ${c.glow}`:'none'};flex-shrink:0"></div>
+          ${i<stops.length-1?'<div style="width:2px;height:42px;background:linear-gradient(#334155,transparent);margin-top:4px"></div>':''}
+        </div>
+        <div style="flex:1;background:#0f172a;border-radius:14px;padding:13px 15px;border:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+            <span style="font-size:11px;color:#475569;font-family:monospace">${s.time}</span>
+            <span style="font-size:11px;color:var(--muted);font-weight:600;background:var(--border);border-radius:6px;padding:2px 8px">${s.icon} ${s.label}</span>
+          </div>
+          ${s.v
+            ? `<div style="font-weight:700;font-size:16px">${s.v.name}</div>
+               <div style="font-size:12px;color:${c.bg};margin-top:3px;font-weight:600">${c.emoji} ${s.v.vibe_label} · Vibe ${s.v.heat}</div>`
+            : `<div style="color:#475569;font-size:13px">No venue found</div>`
+          }
+        </div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('planner-content').innerHTML = `
+    <div style="font-size:21px;font-weight:800;margin-bottom:4px">🌙 Night Planner</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:22px">Your perfect Orlando night out — based on live vibes</div>
+    ${stopsHTML}
+    <button class="btn-primary" onclick="savePlan()">Save My Night Plan</button>
+  `;
+  document.getElementById('planner-modal').style.display = 'flex';
+}
+
+function savePlan() {
+  document.getElementById('planner-modal').style.display = 'none';
+  switchTab('map');
+  showToast('🌙 Night plan saved!');
+}
+
+// ── SHARE ─────────────────────────────────────────────────────────────────────
+function shareVibe(name, heat) {
+  const c = heatColor(heat);
+  const text = `${c.emoji} ${name} is ${c.label} right now (${heat}/100 vibe score)! Check the live map 🗺 #LiveVibeMap #Orlando`;
+  if (navigator.share) {
+    navigator.share({ title:'Live Vibe Map', text });
+  } else {
+    navigator.clipboard.writeText(text).then(() => showToast('📋 Vibe copied to clipboard!'));
+  }
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ── START ─────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
